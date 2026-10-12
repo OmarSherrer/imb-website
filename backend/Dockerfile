@@ -27,3 +27,6 @@ RUN playwright install --with-deps chromium
 
 # Copy the current directory contents into the container at /app
 COPY ./ /app/
+
+# Fail the image build if the production application cannot be imported.
+RUN python -c "from main import app; print('BACKEND_IMPORT_OK')"
