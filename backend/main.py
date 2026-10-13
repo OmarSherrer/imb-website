@@ -1,3 +1,23 @@
+import importlib
+import sys
+
+
+def _disable_broken_charset_normalizer() -> None:
+    """Use requests' fallback if charset-normalizer cannot be imported."""
+    try:
+        importlib.import_module("charset_normalizer")
+    except AttributeError:
+        for module_name in [
+            name
+            for name in sys.modules
+            if name == "charset_normalizer" or name.startswith("charset_normalizer.")
+        ]:
+            sys.modules.pop(module_name, None)
+        sys.modules["charset_normalizer"] = None
+
+
+_disable_broken_charset_normalizer()
+
 # Load environment variables first
 from dotenv import load_dotenv
 
