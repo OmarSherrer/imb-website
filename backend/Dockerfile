@@ -16,13 +16,7 @@ RUN poetry config virtualenvs.create false
 
 # Install dependencies
 RUN poetry install
-# Ensure charset-normalizer uses pure Python
-RUN python -m pip uninstall -y charset-normalizer && \
-    python -m pip install --no-cache-dir --no-binary=charset-normalizer --no-build-isolation --force-reinstall charset-normalizer==3.4.2 && \
-    find /usr/local/lib/python3.12/site-packages/charset_normalizer \
-      -name '*.so' -delete && \
-    CHARSET_NORMALIZER_USE_MYPYC=0 python -c \
-      "import charset_normalizer; import requests; print('Dependencies OK')"
+# Install Chromium and Linux libraries needed by Playwright screenshot previews.
 RUN playwright install --with-deps chromium
 
 # Copy the current directory contents into the container at /app
