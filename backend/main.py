@@ -1,5 +1,6 @@
 import importlib
 import sys
+from typing import cast
 
 
 def _disable_broken_charset_normalizer() -> None:
@@ -13,7 +14,8 @@ def _disable_broken_charset_normalizer() -> None:
             if name == "charset_normalizer" or name.startswith("charset_normalizer.")
         ]:
             sys.modules.pop(module_name, None)
-        sys.modules["charset_normalizer"] = None
+        # Python's import cache accepts a None sentinel to disable an import.
+        cast(dict[str, object], sys.modules)["charset_normalizer"] = None
 
 
 _disable_broken_charset_normalizer()
@@ -42,6 +44,9 @@ from routes import (
 from uploaded_assets import configure_uploaded_asset_routes
 
 app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+from platform_gateway import gateway
+
+app.mount("/platform", gateway)
 configure_uploaded_asset_routes(app)
 
 
@@ -79,3 +84,4 @@ app.include_router(design_systems.router)
 app.include_router(prompt_reports.router)
 app.include_router(agent_runs.router)
 app.include_router(eval_sets.router)
+

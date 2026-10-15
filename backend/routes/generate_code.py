@@ -887,6 +887,11 @@ class PostProcessingMiddleware(Middleware):
 @router.websocket("/generate-code")
 async def stream_code(websocket: WebSocket):
     """Handle WebSocket code generation requests using a pipeline pattern"""
+    from platform_gateway import legacy_authorized
+
+    if not legacy_authorized(websocket.scope.get("headers", [])):
+        await websocket.close(code=1008)
+        return
     pipeline = Pipeline()
 
     # Configure the pipeline
@@ -899,3 +904,4 @@ async def stream_code(websocket: WebSocket):
 
     # Execute the pipeline
     await pipeline.execute(websocket)
+
