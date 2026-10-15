@@ -1,5 +1,6 @@
 import importlib
 import sys
+from typing import cast
 
 
 def _disable_broken_charset_normalizer() -> None:
@@ -13,7 +14,8 @@ def _disable_broken_charset_normalizer() -> None:
             if name == "charset_normalizer" or name.startswith("charset_normalizer.")
         ]:
             sys.modules.pop(module_name, None)
-        sys.modules["charset_normalizer"] = None
+        # Python's import cache accepts a None sentinel to disable an import.
+        cast(dict[str, object], sys.modules)["charset_normalizer"] = None
 
 
 _disable_broken_charset_normalizer()

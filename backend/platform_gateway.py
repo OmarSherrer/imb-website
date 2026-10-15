@@ -10,7 +10,13 @@ import json
 import math
 import os
 import re
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any, Awaitable, Callable, Coroutine, Mapping, MutableMapping, Sequence, cast
+
+Message = MutableMapping[str, Any]
+Scope = MutableMapping[str, Any]
+Receive = Callable[[], Awaitable[Message]]
+Send = Callable[[Message], Awaitable[None]]
+Generator = Callable[[str, Mapping[str, str], dict[str, Any]], Coroutine[Any, Any, str]]
 
 SYSTEM = (
     "Create a complete, polished static HTML document for the user's design brief. "
@@ -23,7 +29,7 @@ MAX_INPUT_BYTES = 4000
 MAX_REQUEST_BYTES = 8000
 
 
-def bearer_matches(headers: list, env: Mapping[str, str]) -> bool:
+def bearer_matches(headers: Sequence[tuple[bytes, bytes]], env: Mapping[str, str]) -> bool:
     token = env.get("IMB_PLATFORM_GATEWAY_TOKEN", "")
     values = [v for k, v in headers if k.lower() == b"authorization"]
     return bool(
@@ -33,7 +39,7 @@ def bearer_matches(headers: list, env: Mapping[str, str]) -> bool:
     )
 
 
-def legacy_authorized(headers: list, env: Mapping[str, str] | None = None) -> bool:
+def legacy_authorized(headers: Sequence[tuple[bytes, bytes]], env: Mapping[str, str] | None = None) -> bool:
     env = os.environ if env is None else env
     return not env.get("IMB_PLATFORM_GATEWAY_TOKEN") or bearer_matches(headers, env)
 
@@ -75,11 +81,14 @@ def policy(env: Mapping[str, str]) -> dict[str, Any]:
     }
 
 
-def parse_request(raw: str) -> str:
+def parse_request(raw: object) -> str:
     if not isinstance(raw, str) or len(raw.encode()) > MAX_REQUEST_BYTES:
         raise ValueError("Invalid design request.")
-    params = json.loads(raw)
-    if not isinstance(params, dict) or set(params) != {"contract", "prompt"} or params["contract"] != CONTRACT:
+    parsed = json.loads(raw)
+    if not isinstance(parsed, dict):
+        raise ValueError("Invalid design request.")
+    params = cast(dict[str, Any], parsed)
+    if set(params) != {"contract", "prompt"} or params["contract"] != CONTRACT:
         raise ValueError("Invalid design request.")
     prompt = params["prompt"]
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt.encode()) > MAX_INPUT_BYTES:
@@ -87,7 +96,7 @@ def parse_request(raw: str) -> str:
     return prompt.strip()
 
 
-async def generate_html(prompt: str, env: Mapping[str, str], limits: dict) -> str:
+async def generate_html(prompt: str, env: Mapping[str, str], limits: dict[str, Any]) -> str:
     # Lazy import lets the authorization, policy and ASGI contract be tested
     # without installing the generation backend or making provider requests.
     from anthropic import AsyncAnthropic
@@ -109,17 +118,17 @@ async def generate_html(prompt: str, env: Mapping[str, str], limits: dict) -> st
 
 
 class PlatformGateway:
-    def __init__(self, env=None, generator: Callable[..., Awaitable[str]] = generate_html):
+    def __init__(self, env: Mapping[str, str] | None = None, generator: Generator = generate_html) -> None:
         self.env = env
         self.generator = generator
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         env = os.environ if self.env is None else self.env
         socket = scope["type"] == "websocket"
         if scope["type"] not in ("http", "websocket"):
             return
 
-        async def deny(status: int):
+        async def deny(status: int) -> None:
             if socket:
                 await send({"type": "websocket.close", "code": 1008})
             else:
@@ -152,7 +161,8 @@ class PlatformGateway:
         if first["type"] != "websocket.connect":
             return
         await send({"type": "websocket.accept"})
-        generation = disconnected = None
+        generation: asyncio.Task[str] | None = None
+        disconnected: asyncio.Task[None] | None = None
         try:
             request = await asyncio.wait_for(receive(), 15)
             if request["type"] != "websocket.receive":
@@ -160,7 +170,7 @@ class PlatformGateway:
             prompt = parse_request(request.get("text"))
             generation = asyncio.create_task(self.generator(prompt, env, limits))
 
-            async def wait_disconnect():
+            async def wait_disconnect() -> None:
                 # Only one input frame is accepted. Further input closes the run.
                 await receive()
 
