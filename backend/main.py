@@ -42,6 +42,9 @@ from routes import (
 from uploaded_assets import configure_uploaded_asset_routes
 
 app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+from platform_gateway import gateway
+
+app.mount("/platform", gateway)
 configure_uploaded_asset_routes(app)
 
 
@@ -79,3 +82,4 @@ app.include_router(design_systems.router)
 app.include_router(prompt_reports.router)
 app.include_router(agent_runs.router)
 app.include_router(eval_sets.router)
+
